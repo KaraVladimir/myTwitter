@@ -13,6 +13,7 @@ public class Runner {
         Context context = new ApplicationContext(new JavaConfig());
 
         TweetRepository repo = context.getBean("repo");
+        repo.findAll();
         System.out.println(repo);
     }
 }

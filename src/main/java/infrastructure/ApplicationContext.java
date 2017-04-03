@@ -39,15 +39,25 @@ public class ApplicationContext implements Context {
             }
         }
         if (isNeedProxy) {
-            bean =  Proxy.newProxyInstance(
+            T proxy = (T) Proxy.newProxyInstance(
                     bean.getClass().getClassLoader(),
                     bean.getClass().getInterfaces(),
                     new InvocationHandler() {
                         @Override
                         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-                            return null;
+                            Object o;
+                            if (bean.getClass().getMethod(method.getName()).isAnnotationPresent(Benchmark.class)) {
+                                System.out.println("Benchmarked");
+                                long startTime = System.nanoTime();
+                                o = method.invoke(bean, method.getParameters());
+                                System.out.println(System.nanoTime()-startTime);
+                            }else {
+                                o = method.invoke(bean, method.getParameters());
+                            }
+                            return o;
                         }
                     });
+            return proxy;
         }
         return bean;
     }

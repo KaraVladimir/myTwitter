@@ -17,6 +17,7 @@ public class TweetRepositoryImpl implements TweetRepository {
         tweetRepo.add(tweet);
     }
 
+    @Benchmark(value = true)
     @Override
     public List<Tweet> findAll() {
         return new ArrayList<>(tweetRepo);
