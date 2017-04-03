@@ -1,16 +1,17 @@
 package infrastructure;
 
 import java.lang.annotation.Annotation;
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
+import java.lang.reflect.*;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
 
 /**
  * Created by main on 02.04.2017.
  */
 public class ApplicationContext implements Context {
     Config config;
+    Map<String, Object> beanMap = new HashMap();
 
     public ApplicationContext(Config config) {
         this.config = config;
@@ -18,15 +19,28 @@ public class ApplicationContext implements Context {
 
     @Override
     public <T> T getBean(String beanName) throws IllegalAccessException, InstantiationException {
+        T bean = (T) beanMap.get(beanName);
+        if (bean != null) {
+            return bean;
+        }
+
         Class beanClass = config.getImpl(beanName);
-        T bean = (T) beanClass.newInstance();
-        annotateMethodPostConstruct(beanName,bean);
-        bean = annotateMethodBenchmark(beanName, bean);
+        if (beanClass == null) {
+            throw new RuntimeException("Bean def not found");
+        }
+
+        bean = beanBuilder(beanClass);
         return bean;
     }
 
-    private <T> T annotateMethodBenchmark(String beanName, T bean) {
-        Class aClass = config.getImpl(beanName);
+    private <T> T beanBuilder(Class beanClass) throws InstantiationException, IllegalAccessException {
+        T bean = (T) beanClass.newInstance();
+        annotateMethodPostConstruct(beanClass,bean);
+        bean = annotateMethodBenchmark(beanClass, bean);
+        return bean;
+    }
+
+    private <T> T annotateMethodBenchmark(Class aClass, T bean) {
         Method[] methods = aClass.getMethods();
         boolean isNeedProxy = false;
 
@@ -39,32 +53,32 @@ public class ApplicationContext implements Context {
             }
         }
         if (isNeedProxy) {
-            T proxy = (T) Proxy.newProxyInstance(
-                    bean.getClass().getClassLoader(),
-                    bean.getClass().getInterfaces(),
-                    new InvocationHandler() {
-                        @Override
-                        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-                            Object o;
-                            if (bean.getClass().getMethod(method.getName()).isAnnotationPresent(Benchmark.class)) {
-                                System.out.println("Benchmarked");
-                                long startTime = System.nanoTime();
-                                o = method.invoke(bean, method.getParameters());
-                                System.out.println(System.nanoTime()-startTime);
-                            }else {
-                                o = method.invoke(bean, method.getParameters());
-                            }
-                            return o;
-                        }
-                    });
-            return proxy;
+            return createProxy(bean);
         }
         return bean;
     }
 
+    private <T> T createProxy(T bean) {
+        T proxy = (T) Proxy.newProxyInstance(
+                bean.getClass().getClassLoader(),
+                bean.getClass().getInterfaces(),
+                (proxy1, method, args) -> {
+                    Object o;
+                    if (bean.getClass().getMethod(method.getName()).isAnnotationPresent(Benchmark.class)) {
+                        System.out.println("Benchmarked");
+                        long startTime = System.nanoTime();
+                        o = method.invoke(bean, method.getParameters());
+                        System.out.println(System.nanoTime()-startTime);
+                    }else {
+                        o = method.invoke(bean, method.getParameters());
+                    }
+                    return o;
+                });
+        return proxy;
+    }
 
-    private <T> void annotateMethodPostConstruct(String beanName, T bean) {
-        Class aClass = config.getImpl(beanName);
+
+    private <T> void annotateMethodPostConstruct(Class aClass, T bean) {
         Method[] methods = aClass.getMethods();
 
         for (Method method : methods) {
@@ -79,5 +93,4 @@ public class ApplicationContext implements Context {
             }
         }
     }
-
 }
